@@ -159,6 +159,31 @@ async function main() {
     assert.ok(await page.evaluate(() => plants[0].hp >= 229.9), 'reverse time heals plants without bites');
     assert.ok(await page.evaluate(() => suns.length > 0), 'reverse time produces future sun');
 
+    // Scout crosses the chosen lane, hits once, and respects pause/cooldown.
+    await page.evaluate(() => {
+      start(1); nextSpawn = nextSun = 999; MouseScout.row = 2;
+      zombies.push({ r: 2, x: 500, hp: 160, max: 160, kind: 'basic', speed: 0, slow: 0, bite: 0, phase: 0 });
+      zombies.push({ r: 1, x: 500, hp: 160, max: 160, kind: 'basic', speed: 0, slow: 0, bite: 0, phase: 0 });
+    });
+    await page.keyboard.press('q');
+    assert.equal(await page.evaluate(() => MouseScout.cooldown), 24);
+    await page.evaluate(() => { for(let i=0;i<20;i++)update(.05); });
+    assert.deepEqual(await page.evaluate(() => zombies.map(z=>z.hp)), [80,160], 'scout hits chosen lane once');
+    assert.ok(await page.evaluate(() => zombies[0].slow>0), 'scout slows enemy');
+    assert.equal(await page.locator('#mouseButton').isDisabled(), true);
+    await page.evaluate(() => { const d=MouseScout.dash; MouseScout.activate(); if(MouseScout.dash!==d)throw Error('cooldown bypass'); });
+    await page.locator('#pauseButton').click();
+    const scoutCooldown=await page.evaluate(() => MouseScout.cooldown);
+    await page.evaluate(() => { frame(3000);frame(4000); });
+    assert.equal(await page.evaluate(() => MouseScout.cooldown), scoutCooldown, 'pause freezes scout');
+    await page.getByRole('button', { name: 'Продолжить', exact: true }).click();
+    await page.evaluate(() => { for(let i=0;i<500;i++)update(.05); });
+    assert.equal(await page.locator('#mouseButton').isEnabled(), true);
+    await page.locator('#mouseButton').click();
+    assert.equal(await page.evaluate(() => MouseScout.cooldown), 24, 'touch button activates scout');
+    await page.evaluate(() => start(1));
+    assert.equal(await page.evaluate(() => MouseScout.dash), null, 'restart resets scout');
+
     // Progression and failure conditions still use the real game update loop.
     await page.evaluate(() => { start(1); spawned = target(); update(.01); });
     assert.equal(await page.evaluate(() => state), 'won', 'victory condition');
